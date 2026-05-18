@@ -116,7 +116,7 @@ const MapPage = () => {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0E1521', overflow: 'hidden', zIndex: 1000 }}>
-      <MapContainer center={mapCenter} zoom={14} zoomControl={false}
+      <MapContainer center={mapCenter} zoom={14} minZoom={10} maxZoom={18} zoomControl={false}
         style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }}>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
