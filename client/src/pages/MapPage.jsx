@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Pin3D, C_CARD_STYLE } from '../components/SurakshaComponents';
-import MapView from '../components/MapView';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { useSafety } from '../context/SafetyContext';
 
 const MapPage = () => {
@@ -78,9 +80,15 @@ const MapPage = () => {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#0E1521', overflow: 'hidden', zIndex: 1000 }}>
-      <div style={{ position: 'absolute', inset: 0, filter: 'sepia(0.3) saturate(0.75) brightness(0.93)' }}>
-        <MapView dynamicPath={dynamicPath} destination={destination} routes={[]} />
-      </div>
+     <MapContainer center={mapCenter} zoom={14} zoomControl={false}
+  style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }}>
+  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    attribution='&copy; OpenStreetMap contributors' />
+  {destination && <MapUpdater center={[destination.lat, destination.lng]} />}
+  {userLocation?.lat && <Marker position={[userLocation.lat, userLocation.lng]}><Popup>You are here</Popup></Marker>}
+  {destination && <Marker position={[destination.lat, destination.lng]}><Popup>{destination.name}</Popup></Marker>}
+  {dynamicPath && <Polyline positions={dynamicPath} color="#22D3EE" weight={5} opacity={0.9} />}
+</MapContainer>
 
       <Pin3D x={28} y={32} color="cyan"   label="Ana"  ping size={32} />
       <Pin3D x={58} y={48} color="amber"  label="Dad"       size={32} />
