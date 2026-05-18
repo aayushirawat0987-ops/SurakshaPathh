@@ -94,7 +94,7 @@ export function Pin3D({ x, y, color = 'terracotta', label, ping, lost, size = 36
     amber: ['#f1c27a', '#d99b3d'],
   }[color] || ['#e8775a', '#c8512e'];
   return (
-    <div style={{ position:'absolute', left:`${x}%`, top:`${y}%`, transform:'translate(-50%, -100%)', zIndex:5 }}>
+    <div style={{ position:'absolute', left:`${x}%`, top:`${y}%`, transform:'translate(-50%, -100%)', zIndex:1000 }}>
       <div style={{ position:'relative' }}>
         <div style={{
           width:size, height:size,
