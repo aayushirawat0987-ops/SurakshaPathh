@@ -1,30 +1,51 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { MapBg, Pin3D, C_CARD_STYLE } from '../components/SurakshaComponents';
+import { Loader2, Search } from 'lucide-react';
+import MapView from '../components/MapView';
+import { useSafety } from '../context/SafetyContext';
 
 const MapPage = () => {
   const navigate = useNavigate();
+  const { location: userLocation } = useSafety();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [result, setResult] = useState(null);
+  const [destination, setDestination] = useState(null);
+  const [dynamicPath, setDynamicPath] = useState(null);
+  const [distance, setDistance] = useState(null);
 
   const handleSearch = async (e) => {
     if (e) e.preventDefault();
     if (!searchQuery.trim()) return;
     setIsSearching(true);
     try {
-      const res = await fetch(
+      const geoRes = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`,
         { headers: { 'User-Agent': 'SurakshaPath-Safety-App' } }
       );
-      const data = await res.json();
-      if (!data?.length) { alert('Location not found. Try a different name.'); return; }
-      setResult({
-        name: data[0].display_name?.split(',')[0] ?? searchQuery,
-        lat: parseFloat(data[0].lat),
-        lng: parseFloat(data[0].lon),
-      });
+      const geoData = await geoRes.json();
+      if (!geoData?.length) { alert('Location not found. Try a different name.'); return; }
+
+      const dest = {
+        lat: parseFloat(geoData[0].lat),
+        lng: parseFloat(geoData[0].lon),
+        name: geoData[0].display_name?.split(',')[0] ?? searchQuery,
+      };
+      setDestination(dest);
+      setDynamicPath(null);
+      setDistance(null);
+
+      if (userLocation?.lat) {
+        const routeRes = await fetch(
+          `https://router.project-osrm.org/route/v1/walking/${userLocation.lng},${userLocation.lat};${dest.lng},${dest.lat}?overview=full&geometries=geojson`
+        );
+        if (routeRes.ok) {
+          const routeData = await routeRes.json();
+          if (routeData?.routes?.length) {
+            setDynamicPath(routeData.routes[0].geometry.coordinates.map(c => [c[1], c[0]]));
+            setDistance((routeData.routes[0].distance / 1000).toFixed(1) + ' km');
+          }
+        }
+      }
     } catch {
       alert('Search failed. Check your connection.');
     } finally {
@@ -32,117 +53,147 @@ const MapPage = () => {
     }
   };
 
-  const clearSearch = () => { setSearchQuery(''); setResult(null); };
+  const clearSearch = () => {
+    setSearchQuery('');
+    setDestination(null);
+    setDynamicPath(null);
+    setDistance(null);
+  };
 
   const openNavigation = () => {
-    if (!result) return;
+    if (!destination) return;
+    const origin = userLocation?.lat ? `&origin=${userLocation.lat},${userLocation.lng}` : '';
     window.open(
-      `https://www.google.com/maps/dir/?api=1&destination=${result.lat},${result.lng}&travelmode=walking`,
+      `https://www.google.com/maps/dir/?api=1${origin}&destination=${destination.lat},${destination.lng}&travelmode=walking`,
       '_blank'
     );
   };
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'#0E1521', overflow:'hidden', zIndex:1000 }}>
-      <MapBg style="neon">
-        <Pin3D x={28} y={32} color="cyan"   label="Ana"  ping size={32}/>
-        <Pin3D x={58} y={48} color="amber"  label="Dad"       size={32}/>
-        <Pin3D x={72} y={22} color="coral"  label="Maya"      size={32}/>
-        <Pin3D x={42} y={70} color="green"  label="Leo"       size={32}/>
-        <Pin3D x={20} y={78} color="purple" label="Nana"      size={32}/>
-      </MapBg>
+    <div className="fixed inset-0 bg-gray-900 overflow-hidden">
+      {/* Full-screen real map */}
+      <div className="absolute inset-0 z-0">
+        <MapView routes={[]} dynamicPath={dynamicPath} destination={destination} />
+      </div>
 
-      {/* Top header */}
-      <motion.div
-        initial={{ y:-20, opacity:0 }} animate={{ y:0, opacity:1 }}
-        style={{ position:'absolute', top:46, left:12, right:12, zIndex:10, ...C_CARD_STYLE, padding:'12px 14px', display:'flex', alignItems:'center', gap:10, background:'rgba(20,27,40,0.85)', backdropFilter:'blur(20px)' }}
-      >
-        <button onClick={() => navigate('/dashboard')}
-          style={{ width:32, height:32, borderRadius:10, background:'rgba(245,241,232,0.06)', border:'1px solid rgba(245,241,232,0.08)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#F5F1E8' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:9, color:'#8A93A2', letterSpacing:2, fontWeight:700, textTransform:'uppercase' }}>Group</div>
-          <div style={{ fontWeight:900, fontSize:15, color:'#F5F1E8', letterSpacing:-0.3 }}>The Hartleys</div>
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 z-[1000] p-3 pt-10">
+        <div className="bg-[rgba(14,21,33,0.88)] backdrop-blur-xl rounded-2xl px-4 py-3 flex items-center gap-3 border border-white/10">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white/10 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <div className="flex-1">
+            <div className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Group</div>
+            <div className="font-black text-base text-white tracking-tight">The Hartleys</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[9px] text-green-400 uppercase tracking-widest font-bold">● Live</div>
+            <div className="text-[11px] text-white font-bold">5/5</div>
+          </div>
         </div>
-        <div style={{ textAlign:'right' }}>
-          <div style={{ fontSize:9, color:'#34D399', letterSpacing:2, fontWeight:700, textTransform:'uppercase' }}>● Live</div>
-          <div style={{ fontSize:11, color:'#F5F1E8', fontWeight:700 }}>5/5</div>
-        </div>
-      </motion.div>
+      </div>
 
       {/* Search bar */}
-      <motion.div
-        initial={{ y:-20, opacity:0 }} animate={{ y:0, opacity:1, transition:{ delay:0.1 } }}
-        style={{ position:'absolute', top:116, left:12, right:12, zIndex:10 }}
-      >
-        <form onSubmit={handleSearch} style={{ display:'flex', gap:8 }}>
-          <div style={{ flex:1, position:'relative' }}>
+      <div className="absolute top-32 left-3 right-3 z-[1000]">
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <div className="flex-1 relative">
             <input
-              type="text" value={searchQuery}
+              type="text"
+              value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search a location…"
-              style={{ width:'100%', boxSizing:'border-box', ...C_CARD_STYLE, background:'rgba(20,27,40,0.88)', backdropFilter:'blur(20px)', padding:'10px 36px 10px 14px', fontSize:12, color:'#F5F1E8', border:'1px solid rgba(245,241,232,0.12)', outline:'none' }}
+              className="w-full bg-[rgba(14,21,33,0.9)] backdrop-blur-xl border border-white/10 rounded-2xl py-2.5 pl-4 pr-10 text-sm text-white placeholder-gray-500 outline-none focus:border-white/25 transition-colors"
             />
-            {(searchQuery || result) && (
-              <button type="button" onClick={clearSearch}
-                style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'#8A93A2', cursor:'pointer', fontSize:16, lineHeight:1, padding:0 }}>×</button>
+            {(searchQuery || destination) && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-lg leading-none bg-transparent border-none cursor-pointer"
+              >×</button>
             )}
           </div>
-          <button type="submit" disabled={isSearching}
-            style={{ ...C_CARD_STYLE, background:'rgba(20,27,40,0.88)', backdropFilter:'blur(20px)', padding:'10px 14px', border:'1px solid rgba(245,241,232,0.12)', cursor:isSearching ? 'default' : 'pointer', color:'#F5F1E8', display:'flex', alignItems:'center', justifyContent:'center' }}>
-            {isSearching
-              ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation:'spin 1s linear infinite' }}><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-              : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            }
+          <button
+            type="submit"
+            disabled={isSearching}
+            className="bg-[rgba(14,21,33,0.9)] backdrop-blur-xl border border-white/10 rounded-2xl px-4 flex items-center justify-center text-white hover:border-white/25 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
           </button>
         </form>
 
-        {result && (
-          <motion.div initial={{ opacity:0, y:-6 }} animate={{ opacity:1, y:0 }}
-            style={{ marginTop:6, ...C_CARD_STYLE, background:'rgba(20,27,40,0.92)', backdropFilter:'blur(20px)', padding:'8px 12px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        {destination && (
+          <div className="mt-2 bg-[rgba(14,21,33,0.92)] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-2.5 flex items-center justify-between">
             <div>
-              <div style={{ fontSize:9, color:'#34D399', letterSpacing:2, fontWeight:700, textTransform:'uppercase' }}>● Found</div>
-              <div style={{ fontSize:12, color:'#F5F1E8', fontWeight:700 }}>{result.name}</div>
+              <div className="text-[9px] text-green-400 uppercase tracking-widest font-bold">● Found</div>
+              <div className="text-sm text-white font-bold">{destination.name}</div>
+              {distance && <div className="text-xs text-gray-400 mt-0.5">Walking: {distance}</div>}
             </div>
-            <button onClick={openNavigation}
-              style={{ padding:'6px 12px', borderRadius:10, fontSize:11, fontWeight:800, background:'linear-gradient(180deg,#34D399,#059669)', color:'#fff', border:'none', cursor:'pointer' }}>
+            <button
+              onClick={openNavigation}
+              className="px-4 py-1.5 rounded-xl text-xs font-black text-white border-none cursor-pointer"
+              style={{ background: 'linear-gradient(180deg,#34D399,#059669)' }}
+            >
               Navigate →
             </button>
-          </motion.div>
-        )}
-      </motion.div>
-
-      <style>{`@keyframes spin { to { transform:rotate(360deg); } }`}</style>
-
-      {/* Bento drawer */}
-      <div style={{ position:'absolute', left:10, right:10, bottom:10, zIndex:10, display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-        <motion.div
-          initial={{ y:20, opacity:0 }} animate={{ y:0, opacity:1 }}
-          style={{ ...C_CARD_STYLE, gridColumn:'1 / 3', padding:0, overflow:'hidden', background:'rgba(20,27,40,0.92)', backdropFilter:'blur(20px)' }}
-        >
-          <div style={{ padding:'12px 14px 4px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <div style={{ fontSize:10, color:'#8A93A2', letterSpacing:2, fontWeight:700, textTransform:'uppercase' }}>5 Members</div>
-            <button style={{ background:'none', border:'none', color:'#22D3EE', fontSize:11, fontWeight:800, cursor:'pointer' }}>List view</button>
           </div>
-          <div style={{ padding:'4px 8px 10px', display:'flex', gap:6, overflowX:'auto' }}>
-            {[['A','Ana','Now','coral'],['D','Dad','2m','amber'],['M','Maya','5m','cyan'],['L','Leo','12m','green'],['N','Nana','LOST','purple']].map(([i,n,t,c],k)=>(
-              <div key={k} style={{ minWidth:74, padding:'10px 6px', background:t==='LOST' ? 'rgba(176,28,84,0.18)' : 'rgba(245,241,232,0.04)', border:t==='LOST' ? '1px solid rgba(255,107,107,0.4)' : '1px solid rgba(245,241,232,0.08)', borderRadius:10, textAlign:'center' }}>
-                <div className={`tm-avatar ${c}`} style={{ width:28, height:28, fontSize:11, margin:'0 auto 4px' }}>{i}</div>
-                <div style={{ fontWeight:800, fontSize:10, color:'#F5F1E8' }}>{n}</div>
-                <div style={{ fontSize:9, color:t==='LOST' ? '#FF8E8E' : '#8A93A2', fontWeight:700 }}>{t}</div>
+        )}
+      </div>
+
+      {/* Bottom drawer */}
+      <div className="absolute bottom-3 left-3 right-3 z-[1000] grid grid-cols-2 gap-2">
+        <div className="col-span-2 bg-[rgba(14,21,33,0.92)] backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">5 Members</div>
+            <button className="text-cyan-400 text-xs font-black bg-transparent border-none cursor-pointer">List view</button>
+          </div>
+          <div className="px-2 pb-3 flex gap-2 overflow-x-auto">
+            {[
+              ['A', 'Ana',  'Now',  '#FF8E8E'],
+              ['D', 'Dad',  '2m',   '#f1c27a'],
+              ['M', 'Maya', '5m',   '#22D3EE'],
+              ['L', 'Leo',  '12m',  '#87b095'],
+              ['N', 'Nana', 'LOST', '#c084fc'],
+            ].map(([i, n, t, c], k) => (
+              <div key={k} style={{
+                minWidth: 72, padding: '10px 6px', borderRadius: 10, textAlign: 'center',
+                background: t === 'LOST' ? 'rgba(176,28,84,0.18)' : 'rgba(245,241,232,0.04)',
+                border: t === 'LOST' ? '1px solid rgba(255,107,107,0.4)' : '1px solid rgba(245,241,232,0.08)',
+              }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: '50%', margin: '0 auto 4px',
+                  background: c + '33', border: `2px solid ${c}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 800, color: c,
+                }}>{i}</div>
+                <div style={{ fontWeight: 800, fontSize: 10, color: '#F5F1E8' }}>{n}</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: t === 'LOST' ? '#FF8E8E' : '#8A93A2' }}>{t}</div>
               </div>
             ))}
           </div>
-        </motion.div>
+        </div>
 
-        <button onClick={() => navigate('/manage-group')}
-          style={{ ...C_CARD_STYLE, padding:'12px', color:'#F5F1E8', fontSize:11, fontWeight:700, background:'rgba(20,27,40,0.85)', backdropFilter:'blur(20px)', display:'flex', alignItems:'center', justifyContent:'center', gap:6, cursor:'pointer' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+        <button
+          onClick={() => navigate('/manage-group')}
+          className="bg-[rgba(14,21,33,0.88)] backdrop-blur-xl border border-white/10 rounded-2xl py-3 flex items-center justify-center gap-2 text-white text-xs font-bold hover:bg-white/5 transition-colors cursor-pointer"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="8.5" cy="7" r="4"/>
+            <line x1="20" y1="8" x2="20" y2="14"/>
+            <line x1="23" y1="11" x2="17" y2="11"/>
+          </svg>
           Invite
         </button>
-        <button onClick={() => navigate('/lost-mode')}
-          style={{ padding:'12px', color:'#fff', fontSize:11, fontWeight:800, background:'linear-gradient(180deg, #FF6B6B, #B11C54)', borderRadius:18, border:'none', display:'flex', alignItems:'center', justifyContent:'center', gap:6, cursor:'pointer', boxShadow:'0 8px 18px -6px rgba(176,28,84,0.5)' }}>
+        <button
+          onClick={() => navigate('/lost-mode')}
+          className="py-3 flex items-center justify-center gap-2 text-white text-xs font-black rounded-2xl border-none cursor-pointer"
+          style={{ background: 'linear-gradient(180deg,#FF6B6B,#B11C54)', boxShadow: '0 8px 18px -6px rgba(176,28,84,0.5)' }}
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M12 1 L2 22 L22 22 Z"/></svg>
           SOS
         </button>
